@@ -13,6 +13,7 @@ TODO
 - [ ] Store waves/brackets
 - [ ] Allow import of Bib Data (Runner name, bib #, age group)
 - [ ] When wave/bracket is complete, join race results & bib data, export to Google Sheet/Doc
+- [ ] Increase 'record result' button size
 
 
 - [ ] unbind finish times from bottom and tie to just beneath the buttons (First results end up hidden depending on device)
