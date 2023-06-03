@@ -1,0 +1,192 @@
+﻿@page "/"
+
+@using CommunityToolkit.Maui.Alerts;
+@using CommunityToolkit.Maui.Storage;
+@using MauiBlazor.Data;
+@using Recurop
+@using System.Text;
+@using CommunityToolkit.Maui;
+@inject RecurringOperationsManager Recurop
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="fixed-top" style="margin-top:35px; text-align:center ">
+    <div>
+        <button class="btn btn-sm btn-primary" style="text-align:left" disabled=@(_timerOperation.CanBeStarted ? false : true) @onclick="StartTimer" >Start</button>
+        <button class="btn btn-sm btn-primary" @onclick="SaveFile">Export</button>
+
+@*        <button class="btn btn-sm btn-primary" disabled=@(_timerOperation.IsRecurring ? false : true) @onclick="PauseTimer">Pause</button>
+        <button class="btn btn-sm btn-primary" disabled=@(_timerOperation.IsPaused ? false : true) @onclick="ResumeTimer">Resume</button>
+        <button class="btn btn-sm btn-danger" disabled=@(_timerOperation.IsRecurring ? false : true) @onclick="StopTimer">Stop</button>*@
+        
+    </div>
+    <div>   
+        <p style="visibility: @(_timerVisible ? "visible" : "hidden"); font-size: 75px;">@_displayTime</p>
+    </div>
+    <div>
+        <button class="btn btn-sm btn-primary" disabled=@(_timerOperation.IsRecurring ? false : true) @onclick="LapTime">Record Finish Time</button>
+    </div>
+</div>
+<div class="fixed-bottom" id="displayTimes">
+    <div style="text-align:center;margin-top:10px;overflow:auto;">
+        @*<p style="font-size: 35px; margin-top:10px">Finish Sequence</p>*@
+        @foreach (var item in _finishTimes.TakeLast(20))
+        {
+            <p style="font-size:15px;margin:2px;">@($"#{item.id} {item.ts.ToString()} @ {item.dt.ToString("HH:mm:ss.fff")}   \n")</p>
+        }
+    </div>
+</div>
+
+
+@code {
+    RecurringOperation _timerOperation;
+    RecurringOperation _blinkerOperation;
+    TimeSpan _displayTime = default;
+    List<TimeSpan> _laptimes;
+    List<FinishTime> _finishTimes;
+    int _elapsedSeconds;
+    int _finisherId;
+    bool _timerVisible = true;
+
+    protected override void OnInitialized()
+    {
+        _timerOperation = new("timer");
+        _timerOperation.Operation = IncrementTimer;
+        _timerOperation.StatusChanged += TimerOperationStatusChanged;
+        _timerOperation.OperationFaulted += LogError;
+
+        _blinkerOperation = new("blinker");
+        _blinkerOperation.Operation = BlinkTimer;
+        _blinkerOperation.StatusChanged += BlinkerOperationStatusChanged;
+
+        _finisherId = 0;
+        _laptimes = new();
+        _finishTimes = new();
+    }
+
+
+
+    private async Task SaveFile()
+    {
+        CancellationToken cancellationToken = default(CancellationToken);
+
+        StringBuilder csv = new StringBuilder();
+        csv.AppendLine("Id,RaceDuration,TimeStamp"); // Optional header
+
+        foreach (var item in _finishTimes)
+        {
+            csv.AppendLine($"{item.id.ToString()},{item.ts.ToString()},{item.dt.ToString("yyyy-MM-dd HH:mm:ss.fff")}");
+        }
+
+        string filename = $"FinishTimes{DateTime.Now.ToString()}.csv";
+
+        using var stream = new MemoryStream(Encoding.Default.GetBytes(csv.ToString()));
+        var fileSaverResult = await FileSaver.Default.SaveAsync(filename, stream, cancellationToken);
+        if (fileSaverResult.IsSuccessful)
+        {
+            await Toast.Make($"The file was saved successfully to location: {fileSaverResult.FilePath}").Show(cancellationToken);
+        }
+        else
+        {
+            await Toast.Make($"The file was not saved successfully with error: {fileSaverResult.Exception.Message}").Show(cancellationToken);
+        }
+    }
+
+    void StartTimer()
+    {
+        Recurop.StartRecurring(_timerOperation, TimeSpan.FromSeconds(1));
+    }
+
+    void PauseTimer()
+    {
+        Recurop.PauseRecurring(_timerOperation);
+        Recurop.StartRecurring(_blinkerOperation, TimeSpan.FromSeconds(0.5));
+    }
+
+    void ResumeTimer()
+    {
+        Recurop.ResumeRecurring(_timerOperation);
+        Recurop.CancelRecurring(_blinkerOperation);
+    }
+
+    void StopTimer()
+    {
+        Recurop.CancelRecurring(_timerOperation);
+    }
+
+    void IncrementTimer()
+    {
+        _elapsedSeconds++;
+        _displayTime = TimeSpan.FromSeconds(_elapsedSeconds);
+        InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
+        //StateHasChanged();
+    }
+
+    void BlinkTimer()
+    {
+        _timerVisible = !_timerVisible;
+        InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
+    }
+
+    void LapTime()
+    {
+        _finisherId++;
+        _laptimes.Add(_displayTime);
+        _finishTimes.Add(new FinishTime(_finisherId, _displayTime, DateTime.Now));
+    }
+
+    void BlinkerOperationStatusChanged()
+    {
+        switch (_blinkerOperation.Status)
+        {
+            case RecurringOperationStatus.Idle:
+                break;
+            case RecurringOperationStatus.Paused:
+                break;
+            case RecurringOperationStatus.Executing:
+                break;
+            case RecurringOperationStatus.Cancelled:
+                _timerVisible = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    void TimerOperationStatusChanged()
+    {
+        switch (_timerOperation.Status)
+        {
+            case RecurringOperationStatus.Idle:
+                break;
+            case RecurringOperationStatus.Paused:
+                break;
+            case RecurringOperationStatus.Executing:
+                break;
+            case RecurringOperationStatus.Cancelled:
+                _displayTime = TimeSpan.Zero;
+                _elapsedSeconds = 0;
+                _laptimes.Clear();
+                break;
+            default:
+                break;
+        }
+    }
+
+    void LogError(Exception ex)
+    {
+        Console.WriteLine(ex.Message);
+    }
+
+    public void Dispose()
+    {
+        Recurop.CancelRecurring(_timerOperation);
+        Recurop.CancelRecurring(_blinkerOperation);
+    }
+}
