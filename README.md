@@ -3,7 +3,11 @@ Sloppy Maui Blazor app for timing triathalons - WIP
 
 Currently:
 - Maui Blazor Hybrid Application
-- Single Screen with two buttons, one for starting the timer, the other for exporting the finish times
+- Single Screen with 3 buttons:
+  - Start timer
+  - Mark finish time (for a single racer in event)
+  - Export results as CSV
+- Restart timer by closing/opening the application 🥉
 
 I used it today to track finish times for our youth participants. On saving the file I opened it as a Google Sheet & shared it out.
 
